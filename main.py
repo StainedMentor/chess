@@ -6,32 +6,17 @@ from PyQt5.QtWidgets import QApplication, QMainWindow, QLabel, QVBoxLayout, QWid
 from PyQt5.QtGui import QBrush, QPainter, QPen, QPixmap, QImage, QColor
 from PyQt5.QtCore import Qt, QObject, pyqtSignal, QTimer
 from Pieces import *
+from board import Board
 import queue
 
 import random
 
 
-class PopupWindow(QDialog):
-    def __init__(self, log, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Popup Window")
-
-        layout = QVBoxLayout()
-        label = QLabel(log)
-        layout.addWidget(label)
-        button = QPushButton("Close")
-        button.clicked.connect(self.close)
-        layout.addWidget(button)
-
-        self.setLayout(layout)
 
 class ChessWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.setWindowTitle('PyQt Chess')
-        self.setGeometry(100, 100, 800, 500)
-        self.pieceMap = BOARD_DEF
         self.selectedPiece = None
         self.availableObjects = []
         self.availableMoves = []
@@ -40,8 +25,18 @@ class ChessWindow(QMainWindow):
         self.log = ""
         self.logQueue = queue.Queue()
         self.log_field = QTextEdit()
+
+        self.setWindowTitle('PyQt Chess')
+        self.setGeometry(100, 100, 800, 500)
+
         self.addUI()
         self.createChessboard()
+
+
+
+        self.board = Board(self.scene)
+        self.board.initPieces()
+
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.handleLog)
@@ -72,9 +67,6 @@ class ChessWindow(QMainWindow):
 
 
     def robotsStart(self):
-        popup = PopupWindow(self.log)
-        popup.exec_()
-
         self.robots = not self.robots
         self.robotButton.setText("Toggle robots: " + str(self.robots))
 
@@ -94,33 +86,25 @@ class ChessWindow(QMainWindow):
         self.graphic = QGraphicsView(self.scene, self)
         self.graphic.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.graphic.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.graphic.setGeometry(0, 0, 400, 400)
+        self.graphic.setGeometry(0, 0, DIMS["tile"]*8, DIMS["tile"]*8)
         self.checkerPatter()
-        self.addPieces()
 
 
     def checkerPatter(self):
         for i in range(8):
             for j in range(8):
                 if (i+j) % 2 == 0:
-                    self.scene.addRect(i*50, j*50, 50, 50, self.pen, self.whiteB)
+                    self.scene.addRect(i*DIMS["tile"], j*DIMS["tile"], DIMS["tile"], DIMS["tile"], self.pen, self.whiteB)
                 else:
-                    self.scene.addRect(i * 50,j * 50, 50, 50, self.pen, self.grayB)
+                    self.scene.addRect(i * DIMS["tile"],j * DIMS["tile"], DIMS["tile"], DIMS["tile"], self.pen, self.grayB)
 
-    def addPieces(self):
-        for i in range(8):
-            for j in range(8):
-                if BOARD_DEF[j][i] is not None:
-                    a = Piece(BOARD_DEF[j][i],i,j)
-                    a.drawSelf(self.scene)
 
-                    self.pieceMap[j][i] = a
 
     def showAvailableMoves(self, ):
         for move in self.availableMoves:
             x, y = move
 
-            temp = self.scene.addRect(x * 50, y * 50, 50 , 50 , self.pen, self.greenB)
+            temp = self.scene.addRect(x * DIMS["tile"], y * DIMS["tile"], DIMS["tile"] , DIMS["tile"] , self.pen, self.greenB)
             self.availableObjects.append(temp)
 
 
@@ -133,101 +117,62 @@ class ChessWindow(QMainWindow):
     def canvasDrag(self,event):
         if self.selectedPiece is None:
             return
-        pos = event.scenePos()
-        x1, y1 = self.selectedPiece
-        self.pieceMap[y1][x1].setPos(pos.x(),pos.y())
-
-        delta = event.pos() - self.last_pos
-
-        self.graphic.horizontalScrollBar().setValue(int(self.graphic.horizontalScrollBar().value() - delta.x()))
-        self.graphic.verticalScrollBar().setValue(int(self.graphic.verticalScrollBar().value() - delta.y()))
-        self.last_pos = event.pos()
+        x, y = event.scenePos().x(), event.scenePos().y()
+        self.selectedPiece.setPos(x,y)
 
 
     def canvasReleased(self,event):
         if self.selectedPiece is None:
             return
 
-        pos = event.scenePos()
-        x = int(pos.x()/50)
-        y = int(pos.y()/50)
-        x1, y1 = self.selectedPiece
+        new = self.getCoords(event)
 
-        if x == x1 and y == y1:
-            self.selectedPiece = None
-            self.pieceMap[y1][x1].deselect()
-            self.hideAvailableMoves()
-
+        if self.selectedPiece.getPos() == new or new not in self.availableMoves:
+            self.releasePiece()
             return
 
-        if (x, y) not in self.availableMoves:
-            return
 
-        if self.pieceMap[y][x] is not None:
-            self.pieceMap[y][x].delete(self.scene)
+        self.board.move(self.selectedPiece.getPos(), new)
 
-        if self.pieceMap[y1][x1].type[0] == "k" and abs(x-x1) == 2:
-            print(1)
-            diff = x-x1
-            if diff > 0:
-                self.pieceMap[y][5] = self.pieceMap[y1][7]
-                self.pieceMap[y][7] = None
-                self.pieceMap[y][5].move(5, y)
+        self.releasePiece()
 
-            else:
-                self.pieceMap[y][3] = self.pieceMap[y1][0]
-                self.pieceMap[y][0] = None
-                self.pieceMap[y][3].move(3, y)
 
-        self.pieceMap[y][x] = self.pieceMap[y1][x1]
-        self.pieceMap[y1][x1] = None
-        self.pieceMap[y][x].move(x, y)
-        self.selectedPiece = None
-        self.hideAvailableMoves()
 
         self.isWhiteTurn = not self.isWhiteTurn
-        self.logQueue.put("Moved from {x1},{y1} to {x2},{y2}.\n".format(x1=str(x1),y1=str(y1),x2=str(x),y2=str(y)))
+        # self.logQueue.put("Moved from {x1},{y1} to {x2},{y2}.\n".format(x1=str(x1),y1=str(y1),x2=str(newx),y2=str(newy)))
 
         if self.robots:
             self.randomMove()
 
-    def randomMove(self):
-        moves = self.getAllMoves()
-        random_move = random.choice(moves)
-        a, b = random_move
-        x1,y1= a
-        x, y =  b
 
-        if self.pieceMap[y][x] is not None:
-            self.pieceMap[y][x].delete(self.scene)
-
-        self.pieceMap[y][x] = self.pieceMap[y1][x1]
-        self.pieceMap[y1][x1] = None
-        self.pieceMap[y][x].move(x, y)
+    def releasePiece(self):
+        self.selectedPiece.deselect()
         self.selectedPiece = None
         self.hideAvailableMoves()
-        self.isWhiteTurn = not self.isWhiteTurn
 
 
     def canvasClicked(self, event):
-        self.last_pos = event.pos()
+        x,y = self.getCoords(event)
 
-        pos = event.scenePos()
-        x = int(pos.x()/50)
-        y = int(pos.y()/50)
-
-        if self.pieceMap[y][x] is None or self.selectedPiece is not None:
+        if self.board.isEmpty([x,y]) or self.selectedPiece is not None:
             return
 
-        if self.pieceMap[y][x].isWhite == self.isWhiteTurn:
+        if not self.board.checkTurn([x,y], self.isWhiteTurn):
+            return
 
-            self.selectedPiece = (x,y)
-            self.pieceMap[y][x].select()
-            self.availableMoves = self.pieceMap[y][x].getAvailableMoves(self.pieceMap)
-            self.showAvailableMoves()
+        self.selectedPiece = self.board.map[y][x]
+        self.selectedPiece.select()
+        self.availableMoves = self.selectedPiece.getAvailableMoves(self.board.map)
+        self.showAvailableMoves()
 
-
-
+    def getCoords(self,event):
+        pos = event.scenePos()
+        x = int(pos.x() / DIMS["tile"])
+        y = int(pos.y() / DIMS["tile"])
+        return (x,y)
+    
+    
+    # random bot
     def getAllMoves(self):
         possibleMoves = []
 
@@ -241,6 +186,22 @@ class ChessWindow(QMainWindow):
                         possibleMoves.append(((x,y),a))
         return possibleMoves
 
+    def randomMove(self):
+        moves = self.getAllMoves()
+        random_move = random.choice(moves)
+        a, b = random_move
+        x1, y1 = a
+        x, y = b
+
+        if self.pieceMap[y][x] is not None:
+            self.pieceMap[y][x].delete(self.scene)
+
+        self.pieceMap[y][x] = self.pieceMap[y1][x1]
+        self.pieceMap[y1][x1] = None
+        self.pieceMap[y][x].move(x, y)
+        self.selectedPiece = None
+        self.hideAvailableMoves()
+        self.isWhiteTurn = not self.isWhiteTurn
 
 
 if __name__ == '__main__':

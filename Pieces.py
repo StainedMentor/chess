@@ -11,7 +11,7 @@ from util import *
 class Piece(QGraphicsItem):
     def __init__(self, type, x, y):
         super().__init__()
-        self.image = QPixmap("pieces/Chess_"+type+"t60.png").scaledToWidth(50)
+        self.image = QPixmap("pieces/Chess_"+type+"t60.png").scaledToWidth(DIMS["tile"])
         self.didMove = False
         self.type = type
         self.x = x
@@ -24,24 +24,25 @@ class Piece(QGraphicsItem):
     def paint(self, painter, option, widget):
         painter.drawPixmap(self.image.rect(), self.image)
 
-
+    def getPos(self):
+        return (self.x,self.y)
 
     def drawSelf(self, scene):
         scene.addItem(self)
-        self.setPos(self.x * 50, self.y * 50)
+        self.setPos(self.x * DIMS["tile"], self.y * DIMS["tile"])
 
     def move(self,x,y):
         self.didMove = True
         self.x = x
         self.y = y
-        self.setPos(self.x * 50, self.y * 50)
+        self.setPos(self.x * DIMS["tile"], self.y * DIMS["tile"])
 
 
     def select(self):
-        self.setPos(self.x * 50+10, self.y * 50+10)
+        self.setPos(self.x * DIMS["tile"]+10, self.y * DIMS["tile"]+10)
 
     def deselect(self):
-        self.setPos(self.x * 50, self.y * 50)
+        self.setPos(self.x * DIMS["tile"], self.y * DIMS["tile"])
 
     def delete(self, scene):
         scene.removeItem(self)
@@ -63,84 +64,37 @@ class Piece(QGraphicsItem):
 
     def pawnMoves(self,board):
         moves = []
+
         dir = -1 if self.isWhite else 1
-
         pos1 = (self.x, self.y + 1 * dir)
-        if board[pos1[1]][pos1[0]] is None:
+
+        if isEmpty(pos1,board):
             moves.append(pos1)
+            if not self.didMove:
 
-            if self.y == 6 or self.y == 1:
                 pos2 = (self.x,self.y+2*dir)
-                if board[pos2[1]][pos2[0]] is None:
-
+                if isEmpty(pos2,board):
                     moves.append(pos2)
 
+        # diagonal attack
         pos3 = (self.x+1, self.y + 1 * dir)
         pos4 = (self.x-1, self.y + 1 * dir)
-        if pos3[0] in range(8) and pos3[1] in range(8):
-            if board[pos3[1]][pos3[0]] is not None:
+        if onBoard(pos3):
+            if not isEmpty(pos3,board):
                 moves.append(pos3)
-        if pos4[0] in range(8) and pos4[1] in range(8):
-            if board[pos4[1]][pos4[0]] is not None:
+        if onBoard(pos4):
+            if not isEmpty(pos4, board):
                 moves.append(pos4)
 
         return moves
 
 
 
-
-
     def rookMoves(self,board):
-        moves = []
-        blockedDir = [False,False,False,False]
-        for i in range(1,8):
-            temp = []
-            temp.append((self.x+i,self.y))
-            temp.append((self.x-i,self.y))
-            temp.append((self.x,self.y+i))
-            temp.append((self.x,self.y-i))
-
-            for index, pos in enumerate(temp):
-                if pos[0] in range(8) and pos[1] in range(8):
-                    if blockedDir[index]:
-                        continue
-                    if board[pos[1]][pos[0]] is not None:
-                        blockedDir[index] = True
-
-                        if board[pos[1]][pos[0]].isWhite == self.isWhite:
-                            continue
-                        else:
-                            moves.append(pos)
-
-                    moves.append(pos)
-
-        return moves
+        return hvMoves(self.x,self.y,board,self.isWhite)
 
     def bishopMoves(self,board):
-        moves = []
-        blockedDir = [False,False,False,False]
-        for i in range(1,8):
-            temp = []
-            temp.append((self.x+i,self.y+i))
-            temp.append((self.x-i,self.y-i))
-            temp.append((self.x-i,self.y+i))
-            temp.append((self.x+i,self.y-i))
-
-            for index, pos in enumerate(temp):
-                if pos[0] in range(8) and pos[1] in range(8):
-                    if blockedDir[index]:
-                        continue
-                    if board[pos[1]][pos[0]] is not None:
-                        blockedDir[index] = True
-
-                        if board[pos[1]][pos[0]].isWhite == self.isWhite:
-                            continue
-                        else:
-                            moves.append(pos)
-
-                    moves.append(pos)
-
-        return moves
+        return diagMoves(self.x,self.y,board,self.isWhite)
 
     def knightMoves(self,board):
         moves = []
@@ -156,63 +110,22 @@ class Piece(QGraphicsItem):
 
 
         for pos in temp:
-            if pos[0] in range(8) and pos[1] in range(8):
-                if board[pos[1]][pos[0]] is not None:
+            if onBoard(pos):
+                if not isEmpty(pos,board):
                     if board[pos[1]][pos[0]].isWhite == self.isWhite:
                         continue
-
                 moves.append(pos)
-
 
         return moves
 
 
     def queenMove(self,board):
         moves = []
+        hv = hvMoves(self.x,self.y,board,self.isWhite)
+        diag = diagMoves(self.x,self.y,board,self.isWhite)
+        moves.extend(diag)
+        moves.extend(hv)
 
-        blockedDir = [False,False,False,False]
-        for i in range(1,8):
-            temp = []
-            temp.append((self.x+i,self.y))
-            temp.append((self.x-i,self.y))
-            temp.append((self.x,self.y+i))
-            temp.append((self.x,self.y-i))
-
-            for index, pos in enumerate(temp):
-                if pos[0] in range(8) and pos[1] in range(8):
-                    if blockedDir[index]:
-                        continue
-                    if board[pos[1]][pos[0]] is not None:
-                        blockedDir[index] = True
-
-                        if board[pos[1]][pos[0]].isWhite == self.isWhite:
-                            continue
-                        else:
-                            moves.append(pos)
-
-                    moves.append(pos)
-
-        blockedDir = [False,False,False,False]
-        for i in range(1,8):
-            temp = []
-            temp.append((self.x+i,self.y+i))
-            temp.append((self.x-i,self.y-i))
-            temp.append((self.x-i,self.y+i))
-            temp.append((self.x+i,self.y-i))
-
-            for index, pos in enumerate(temp):
-                if pos[0] in range(8) and pos[1] in range(8):
-                    if blockedDir[index]:
-                        continue
-                    if board[pos[1]][pos[0]] is not None:
-                        blockedDir[index] = True
-
-                        if board[pos[1]][pos[0]].isWhite == self.isWhite:
-                            continue
-                        else:
-                            moves.append(pos)
-
-                    moves.append(pos)
         return moves
 
     def kingMoves(self,board):
@@ -229,15 +142,13 @@ class Piece(QGraphicsItem):
         for i in range(3):
             for j in range(3):
                 pos = (self.x-1 + i,self.y-1+j)
-                if pos[0] in range(8) and pos[1] in range(8):
+                if onBoard(pos):
                     if i == 1 and j == 1:
                         continue
 
-                    if board[pos[1]][pos[0]] is not None:
+                    if not isEmpty(pos,board):
                         if board[pos[1]][pos[0]].isWhite == self.isWhite:
                             continue
-                        else:
-                            moves.append(pos)
                     moves.append(pos)
 
         return moves
