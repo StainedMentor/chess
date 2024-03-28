@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 from constants import *
 from Pieces import *
 
@@ -39,8 +41,7 @@ class Board:
         self.map[originy][originx] = None
         self.map[newy][newx].move(newx, newy)
 
-
-
+        return originx,originy,newx,newy
 
 
     def castle(self, dir, y):
@@ -53,3 +54,66 @@ class Board:
             self.map[y][3] = self.map[y][0]
             self.map[y][0] = None
             self.map[y][3].move(3, y)
+
+
+    def checkCheck(self,map, isWhite):
+        kingPos = self.getKingPos(map, isWhite)
+        moves = getAllMoves(map, not isWhite)
+
+        if kingPos in moves:
+            return True
+        else:
+            return False
+
+    def checkMate(self, isWhite):
+
+        boards = self.getAllPossibleBoard( isWhite)
+
+        for b in boards:
+            if not self.checkCheck(b, isWhite):
+                return False
+        return True
+
+    def getAllPossibleBoard(self, isWhite):
+        boards = []
+
+
+        for x in range(8):
+            for y in range(8):
+                if self.map[y][x] is None:
+                    continue
+                if self.map[y][x].isWhite == isWhite:
+                    available = self.map[y][x].getAvailableMoves(self.map)
+                    for move in available:
+                        temp = deepcopy(self.map)
+                        newx,newy = move
+                        temp[newy][newx] = temp[y][x]
+                        temp[y][x] = None
+                        boards.append(temp)
+
+        return boards
+
+    def getAllMoves(self, map, isWhite):
+        possibleMoves = []
+
+        for x in range(8):
+            for y in range(8):
+                if map[y][x] is None:
+                    continue
+                if map[y][x].isWhite == isWhite:
+                    available = map[y][x].getAvailableMoves(map)
+                    possibleMoves.extend(available)
+
+        return possibleMoves
+
+    def getKingPos(self,map, isWhite):
+        for x in range(8):
+            for y in range(8):
+                if map[y][x] is None:
+                    continue
+
+                if map[y][x].type[0] != 'k':
+                    continue
+
+                if map[y][x].isWhite == isWhite:
+                    return (x,y)

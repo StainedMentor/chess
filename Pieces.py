@@ -80,10 +80,10 @@ class Piece(QGraphicsItem):
         pos3 = (self.x+1, self.y + 1 * dir)
         pos4 = (self.x-1, self.y + 1 * dir)
         if onBoard(pos3):
-            if not isEmpty(pos3,board):
+            if not isEmpty(pos3,board) and board[pos3[1]][pos3[0]].isWhite != self.isWhite:
                 moves.append(pos3)
         if onBoard(pos4):
-            if not isEmpty(pos4, board):
+            if not isEmpty(pos4, board) and board[pos4[1]][pos4[0]].isWhite != self.isWhite:
                 moves.append(pos4)
 
         return moves
@@ -154,6 +154,9 @@ class Piece(QGraphicsItem):
         return moves
 
 
+    def __deepcopy__(self, memodict={}):
+        tmp = Piece(self.type, self.x,self.y)
+        return tmp
 
 
 
