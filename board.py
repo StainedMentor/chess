@@ -58,7 +58,7 @@ class Board:
 
     def checkCheck(self,map, isWhite):
         kingPos = self.getKingPos(map, isWhite)
-        moves = getAllMoves(map, not isWhite)
+        moves = self.getSidesAvailableMoves(map, not isWhite)
 
         if kingPos in moves:
             return True
@@ -93,7 +93,7 @@ class Board:
 
         return boards
 
-    def getAllMoves(self, map, isWhite):
+    def getSidesAvailableMoves(self, map, isWhite):
         possibleMoves = []
 
         for x in range(8):

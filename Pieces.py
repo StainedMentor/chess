@@ -1,6 +1,6 @@
 from PyQt5.QtCore import QRectF
-from PyQt5.QtGui import QImage, QPixmap
-from PyQt5.QtWidgets import QGraphicsPixmapItem, QGraphicsItem
+from PyQt5.QtGui import QPixmap
+from PyQt5.QtWidgets import QGraphicsItem
 
 from constants import *
 from util import *
@@ -62,29 +62,23 @@ class Piece(QGraphicsItem):
             case "q":
                 return self.queenMove(board)
 
-    def pawnMoves(self,board):
+    def pawnMoves(self, board):
         moves = []
+        direction = -1 if self.isWhite else 1
+        forward_one = (self.x, self.y + direction)
+        forward_two = (self.x, self.y + 2 * direction)
+        diagonal_right = (self.x + 1, self.y + direction)
+        diagonal_left = (self.x - 1, self.y + direction)
 
-        dir = -1 if self.isWhite else 1
-        pos1 = (self.x, self.y + 1 * dir)
+        if onBoard(forward_one) and isEmpty(forward_one, board):
+            moves.append(forward_one)
+            if not self.didMove and isEmpty(forward_two, board):
+                moves.append(forward_two)
 
-        if isEmpty(pos1,board):
-            moves.append(pos1)
-            if not self.didMove:
-
-                pos2 = (self.x,self.y+2*dir)
-                if isEmpty(pos2,board):
-                    moves.append(pos2)
-
-        # diagonal attack
-        pos3 = (self.x+1, self.y + 1 * dir)
-        pos4 = (self.x-1, self.y + 1 * dir)
-        if onBoard(pos3):
-            if not isEmpty(pos3,board) and board[pos3[1]][pos3[0]].isWhite != self.isWhite:
-                moves.append(pos3)
-        if onBoard(pos4):
-            if not isEmpty(pos4, board) and board[pos4[1]][pos4[0]].isWhite != self.isWhite:
-                moves.append(pos4)
+        # Check diagonal
+        for pos in [diagonal_right, diagonal_left]:
+            if onBoard(pos) and not isEmpty(pos, board) and board[pos[1]][pos[0]].isWhite != self.isWhite:
+                moves.append(pos)
 
         return moves
 
@@ -96,25 +90,15 @@ class Piece(QGraphicsItem):
     def bishopMoves(self,board):
         return diagMoves(self.x,self.y,board,self.isWhite)
 
-    def knightMoves(self,board):
+    def knightMoves(self, board):
         moves = []
-        temp = []
-        temp.append((self.x + 2, self.y + 1))
-        temp.append((self.x + 2, self.y - 1))
-        temp.append((self.x - 2, self.y + 1))
-        temp.append((self.x - 2, self.y - 1))
-        temp.append((self.x - 1, self.y + 2))
-        temp.append((self.x + 1, self.y + 2))
-        temp.append((self.x - 1, self.y - 2))
-        temp.append((self.x + 1, self.y - 2))
+        directions = [(2, 1), (2, -1), (-2, 1), (-2, -1), (-1, 2), (1, 2), (-1, -2), (1, -2)]
 
-
-        for pos in temp:
-            if onBoard(pos):
-                if not isEmpty(pos,board):
-                    if board[pos[1]][pos[0]].isWhite == self.isWhite:
-                        continue
-                moves.append(pos)
+        for dx, dy in directions:
+            new_x, new_y = self.x + dx, self.y + dy
+            if onBoard((new_x, new_y)):
+                if isEmpty((new_x, new_y), board) or board[new_y][new_x].isWhite != self.isWhite:
+                    moves.append((new_x, new_y))
 
         return moves
 
@@ -161,3 +145,37 @@ class Piece(QGraphicsItem):
 
 
 
+def diagMoves(x, y, board, isWhite):
+    dirs = [(1, 1), (-1, -1), (-1, 1), (1, -1)]
+    moves = lineMoves(x,y,board,isWhite,dirs)
+    return moves
+
+def hvMoves(x,y, board, isWhite):
+    dirs = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+    moves = lineMoves(x,y,board,isWhite,dirs)
+    return moves
+
+
+def lineMoves(x, y, board, isWhite, dirs):
+    moves = []
+
+    for dx, dy in dirs:
+        for i in range(1, 8):
+            new_x, new_y = x + i * dx, y + i * dy
+            if not onBoard((new_x, new_y)):
+                break
+            if not isEmpty((new_x, new_y), board):
+                if board[new_y][new_x].isWhite != isWhite:
+                    moves.append((new_x, new_y))
+                break
+            moves.append((new_x, new_y))
+
+    return moves
+
+
+
+def onBoard(pos):
+    return pos[0] in range(8) and pos[1] in range(8)
+
+def isEmpty(pos, board):
+    return board[pos[1]][pos[0]] is None
