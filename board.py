@@ -6,6 +6,9 @@ from Pieces import *
 class Board:
     def __init__(self, scene):
         self.map = BOARD_DEF
+        self.whiteChecked = False
+        self.blackChecked = False
+        self.selectedPiece = None
         self.scene = scene
 
     def initPieces(self):
@@ -17,8 +20,8 @@ class Board:
 
                     self.map[j][i] = piece
 
-    def drag(self,selected, pos):
-        self.map[selected[1]][selected[0]].setPos(pos.x(),pos.y())
+    def drag(self, pos):
+        self.selectedPiece.setPos(pos.x(),pos.y())
 
     def isEmpty(self, pos):
         return self.map[pos[1]][pos[0]] is None
@@ -43,6 +46,11 @@ class Board:
 
         return originx,originy,newx,newy
 
+    def selectPiece(self,x,y):
+        self.selectedPiece = self.map[y][x]
+        self.selectedPiece.select()
+        return self.selectedPiece.getAvailableMoves(self.map, self.checkMove)
+
 
     def castle(self, dir, y):
         if dir > 0:
@@ -61,6 +69,10 @@ class Board:
         moves = self.getSidesAvailableMoves(map, not isWhite)
 
         if kingPos in moves:
+            if isWhite:
+                self.whiteChecked = True
+            else:
+                self.blackChecked = True
             return True
         else:
             return False
@@ -74,6 +86,21 @@ class Board:
                 return False
         return True
 
+    def checkMove(self, isWhite, move):
+
+        if isWhite and not self.whiteChecked:
+            return False
+        if not isWhite and not self.blackChecked:
+            return False
+        temp = deepcopy(self.map)
+        origin, new = move
+        newx, newy = new
+        x,y = origin
+        temp[newy][newx] = temp[y][x]
+        temp[y][x] = None
+
+        return  self.checkCheck(temp, isWhite)
+
     def getAllPossibleBoard(self, isWhite):
         boards = []
 
@@ -83,7 +110,7 @@ class Board:
                 if self.map[y][x] is None:
                     continue
                 if self.map[y][x].isWhite == isWhite:
-                    available = self.map[y][x].getAvailableMoves(self.map)
+                    available = self.map[y][x].getAvailableMoves(self.map, self.checkMove)
                     for move in available:
                         temp = deepcopy(self.map)
                         newx,newy = move
@@ -101,7 +128,7 @@ class Board:
                 if map[y][x] is None:
                     continue
                 if map[y][x].isWhite == isWhite:
-                    available = map[y][x].getAvailableMoves(map)
+                    available = map[y][x].getAvailableMoves(map, self.checkMove)
                     possibleMoves.extend(available)
 
         return possibleMoves
@@ -117,3 +144,39 @@ class Board:
 
                 if map[y][x].isWhite == isWhite:
                     return (x,y)
+
+
+
+
+
+    # neural net functions
+
+    def encodeBoard(self):
+        encoded = [[0 for _ in range(8)] for _ in range(8)]
+        piece_to_index = {'pd': 1, 'nd': 2, 'bd': 3, 'rd': 4, 'qd': 5, 'kd': 6,
+                          'pl': -1, 'nl': -2, 'bl': -3, 'rl': -4, 'ql': -5, 'kl': -6}
+
+        for x in range(8):
+            for y in range(8):
+                if self.map[y][x] is None:
+                    continue
+                t = self.map[y][x].type
+                encoded[y][x] = piece_to_index[t]
+
+
+
+        return encoded
+
+
+    def getAllMovesEncoded(self, isWhite):
+        possibleMoves = []
+
+        for x in range(8):
+            for y in range(8):
+                if self.map[y][x] is None:
+                    continue
+                if self.map[y][x].isWhite == isWhite:
+                    available = self.map[y][x].getAvailableMoves(self.map, self.checkMove)
+                    for a in available:
+                        possibleMoves.append(((x,y),a))
+        return possibleMoves

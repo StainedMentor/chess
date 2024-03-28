@@ -1,4 +1,5 @@
-from PyQt5 import QtCore
+import numpy as np
+import torch
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QPushButton, QGraphicsView, \
     QGraphicsScene, QGridLayout, QTextEdit, QScrollArea, QLabel, QLineEdit
 from PyQt5.QtGui import QBrush, QPen, QColor
@@ -12,6 +13,11 @@ import re
 from constants import *
 from board import Board
 
+from network import ChessNet
+net = ChessNet()
+
+net.load_state_dict(torch.load('dict.pth'))
+net.eval()
 
 class ChessWindow(QMainWindow):
     def __init__(self):
@@ -242,24 +248,24 @@ class ChessWindow(QMainWindow):
         self.availableObjects = []
 
     def canvasDrag(self,event):
-        if self.selectedPiece is None:
+        if self.board.selectedPiece is None:
             return
-        x, y = event.scenePos().x(), event.scenePos().y()
-        self.selectedPiece.setPos(x,y)
+        pos = event.scenePos()
+        self.board.drag(pos)
 
 
     def canvasReleased(self,event):
-        if self.selectedPiece is None:
+        if self.board.selectedPiece is None:
             return
 
         new = self.getCoords(event)
 
-        if self.selectedPiece.getPos() == new or new not in self.availableMoves:
+        if self.board.selectedPiece.getPos() == new or new not in self.availableMoves:
             self.releasePiece()
             return
 
 
-        x1,y1,newx,newy = self.board.move(self.selectedPiece.getPos(), new)
+        x1,y1,newx,newy = self.board.move(self.board.selectedPiece.getPos(), new)
 
         self.releasePiece()
 
@@ -280,8 +286,8 @@ class ChessWindow(QMainWindow):
 
 
     def releasePiece(self):
-        self.selectedPiece.deselect()
-        self.selectedPiece = None
+        self.board.selectedPiece.deselect()
+        self.board.selectedPiece = None
         self.hideAvailableMoves()
 
 
@@ -294,9 +300,7 @@ class ChessWindow(QMainWindow):
         if not self.board.checkTurn([x,y], self.isWhiteTurn):
             return
 
-        self.selectedPiece = self.board.map[y][x]
-        self.selectedPiece.select()
-        self.availableMoves = self.selectedPiece.getAvailableMoves(self.board.map)
+        self.availableMoves = self.board.selectPiece(x,y)
         self.showAvailableMoves()
 
     def getCoords(self,event):
@@ -306,26 +310,32 @@ class ChessWindow(QMainWindow):
         return (x,y)
     
     
-    # random bot
-    def getAllMoves(self):
-        possibleMoves = []
 
-        for x in range(8):
-            for y in range(8):
-                if self.board.map[y][x] is None:
-                    continue
-                if not self.board.map[y][x].isWhite:
-                    available = self.board.map[y][x].getAvailableMoves(self.board.map)
-                    for a in available:
-                        possibleMoves.append(((x,y),a))
-        return possibleMoves
 
     def randomMove(self):
-        moves = self.getAllMoves()
-        random_move = random.choice(moves)
-        a, b = random_move
-        x1, y1 = a
-        x, y = b
+
+        bstate = self.board.encodeBoard()
+        bstate = np.array(bstate)
+        # print(bstate)
+
+        bstate = bstate.flatten()
+        moves = self.board.getAllMovesEncoded(False)
+
+        vals = torch.Tensor()
+        for move in moves:
+            o, n = move
+            inVec = np.concatenate((bstate, o, n))
+            inVec = torch.Tensor(inVec)
+            output = net(inVec)
+            vals = torch.cat((vals, output))
+
+        vals = vals.detach().numpy()
+        bestIndex = vals.argmax()
+
+        o, n = moves[bestIndex]
+
+        x1, y1 = o
+        x, y = n
 
         if self.board.map[y][x] is not None:
             self.board.map[y][x].delete(self.scene)
