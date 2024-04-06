@@ -47,7 +47,7 @@ class Piece(QGraphicsItem):
     def delete(self, scene):
         scene.removeItem(self)
 
-    def getAvailableMoves(self, board, check):
+    def getAvailableMoves(self, board, check, doCheck=True):
         temp = []
         match self.type[0]:
             case "p":
@@ -62,6 +62,9 @@ class Piece(QGraphicsItem):
                 temp = self.kingMoves(board)
             case "q":
                 temp = self.queenMove(board)
+
+        if not doCheck:
+            return temp
         moves = []
         for move in temp:
             full = (self.getPos(),move)

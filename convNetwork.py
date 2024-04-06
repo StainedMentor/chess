@@ -1,4 +1,6 @@
 import random
+from copy import deepcopy
+
 import numpy as np
 
 from boardNoGui import Board
@@ -7,37 +9,36 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from matplotlib import pyplot as plt
-
-
+import time
 
 
 class ChessNet(nn.Module):
     def __init__(self):
         super(ChessNet, self).__init__()
 
-        self.fc1 = nn.Linear(64+4,1088)
-        self.fc2 = nn.Linear(1088,1088)
-        self.fc3 = nn.Linear(1088,1088)
-        self.fc4 = nn.Linear(1088,1088)
+        self.conv1 = nn.Conv2d(in_channels=2, out_channels=32, kernel_size=3, stride=1, padding=1)
+        self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, stride=1, padding=1)
+        self.fc1 = nn.Linear(32*8*8*2,128)
+        self.fc2 = nn.Linear(128,1)
 
-        self.fc5 = nn.Linear(1088,1)
 
     def forward(self, x):
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = F.relu(self.fc3(x))
-        x = F.relu(self.fc4(x))
+        x = F.relu(self.conv1(x))
+        x = F.relu(self.conv2(x))
 
-        x = self.fc5(x)
+        x = x.flatten()
+        # x = x.view(x.size(0), -1)
+
+        x = F.relu(self.fc1(x))
+
+        x = self.fc2(x)
         return x
 
 
 def getBestMove(moves, bstate, net):
     vals = torch.Tensor()
     for move in moves:
-        o, n = move
-        inVec = np.concatenate((bstate, o, n))
-        inVec = torch.Tensor(inVec)
+        inVec = readyInput(bstate,move)
         output = net(inVec)
         vals = torch.cat((vals, output))
     vals = vals.detach().numpy()
@@ -60,14 +61,28 @@ def decodeBoard(boardState):
     temp = temp.reshape(8,8)
     return temp
 
+def readyInput(state,move):
+    temp = deepcopy(state)
+    s = deepcopy(state)
+    o, n = move
+    x1,y1 = o
+    x2,y2 = n
+    temp[y2][x2] = temp[y1][x1]
+    temp[y1][x1] = 0
+    full = np.stack((s,temp))
+    return torch.Tensor(full)
+
+
+
 def train():
     # init
+    start = time.time()
     net = ChessNet()
-    net.load_state_dict(torch.load('dict.pth'))
+    net.load_state_dict(torch.load('dict_conv.pth'))
 
     num_episodes = 1000
     maxSteps = 120
-    learning_rate = 0.0001
+    learning_rate = 0.001
     optimizer = torch.optim.Adam(net.parameters(), lr=learning_rate)
 
     memoryBuffer = []
@@ -89,7 +104,6 @@ def train():
             turn = (step+1)%2
             bstate = newBoard.encodeBoard()
             bstate = np.array(bstate)
-            bstate = bstate.flatten()
             moves = newBoard.getAllMovesEncoded(True if turn == 1 else False)
 
 
@@ -114,9 +128,9 @@ def train():
             p1 = np.count_nonzero(bstate)
             p2 = np.count_nonzero(newState)
             if p2 < p1:
-                # reward += 10
-                # updateRewards(episodeBuffer,3,10,0.1,1)
-                # updateRewards(episodeBuffer,3,-10,0.1)
+                reward += 10
+                updateRewards(episodeBuffer,3,10,0.1,1)
+                updateRewards(episodeBuffer,3,-10,0.1)
 
                 if turn == 1:
                     whiteTook += 1
@@ -130,7 +144,7 @@ def train():
                     whiteWon += 1
                 else:
                     blackWon += 1
-                updateRewards(episodeBuffer,-1,100,0.1)
+                updateRewards(episodeBuffer,-1,100,0)
                 updateRewards(episodeBuffer,-1,-100,0.1,1)
 
                 break
@@ -139,11 +153,11 @@ def train():
             stats = np.array([current])
         else:
             stats = np.append(stats,[current], axis=0)
-        print("\r"+"episode: " + str(episode)+ " white: " + str(np.sum(stats[:,2]))+ " black: " + str(np.sum(stats[:,3])) + " finished " + str((np.sum(stats[:,2]) +np.sum(stats[:,3]))/(episode+1)), end="")
+        print("\r"+"episode: " + str(episode+1)+ " white: " + str(np.sum(stats[:,2]))+ " black: " + str(np.sum(stats[:,3])) + " finished " + str((np.sum(stats[:,2]) +np.sum(stats[:,3]))/(episode+1)) + " minutes:" + str(round((time.time()-start)/60)), end="")
 
-        if not episodeEnded:
-            updateRewards(episodeBuffer,-1,-100,0)
-            updateRewards(episodeBuffer,-1,-100,0,1)
+        # if not episodeEnded:
+        #     updateRewards(episodeBuffer,-1,-40,0)
+        #     updateRewards(episodeBuffer,-1,-40,0,1)
 
         memoryBuffer.extend(episodeBuffer)
 
@@ -155,17 +169,18 @@ def train():
         miniBatchEpisode = random.sample(episodeBuffer, batchSizeEpisode)
 
 
-        miniBatch.extend(miniBatchEpisode)
+        miniBatch.extend(episodeBuffer)
+        # miniBatch = episodeBuffer
 
         tempLoss = 0
         for state, action, reward in miniBatch:
-            inVec = np.concatenate((state, *action))
-            inVec = torch.Tensor(inVec)
+            inVec = readyInput(state,action)
             predicted_values = net(inVec)
 
             target = [reward]
             target = torch.Tensor(target)
-            loss = F.mse_loss(predicted_values, target)
+            loss = F.l1_loss(predicted_values, target)
+
             tempLoss += loss
             optimizer.zero_grad()
             loss.backward()
@@ -184,7 +199,7 @@ def train():
 
 
     stDict = net.state_dict()
-    torch.save(stDict, 'dict.pth')
+    torch.save(stDict, 'dict_conv.pth')
 
     stats = np.array(stats)
 

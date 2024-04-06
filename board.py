@@ -64,9 +64,9 @@ class Board:
             self.map[y][3].move(3, y)
 
 
-    def checkCheck(self,map, isWhite):
+    def checkCheck(self,map, isWhite, doChecks=True):
         kingPos = self.getKingPos(map, isWhite)
-        moves = self.getSidesAvailableMoves(map, not isWhite)
+        moves = self.getSidesAvailableMoves(map, not isWhite, doChecks)
 
         if kingPos in moves:
             if isWhite:
@@ -88,10 +88,6 @@ class Board:
 
     def checkMove(self, isWhite, move):
 
-        if isWhite and not self.whiteChecked:
-            return False
-        if not isWhite and not self.blackChecked:
-            return False
         temp = deepcopy(self.map)
         origin, new = move
         newx, newy = new
@@ -99,7 +95,7 @@ class Board:
         temp[newy][newx] = temp[y][x]
         temp[y][x] = None
 
-        return  self.checkCheck(temp, isWhite)
+        return self.checkCheck(temp, isWhite, False)
 
     def getAllPossibleBoard(self, isWhite):
         boards = []
@@ -120,7 +116,7 @@ class Board:
 
         return boards
 
-    def getSidesAvailableMoves(self, map, isWhite):
+    def getSidesAvailableMoves(self, map, isWhite, doCheck=True):
         possibleMoves = []
 
         for x in range(8):
@@ -128,7 +124,7 @@ class Board:
                 if map[y][x] is None:
                     continue
                 if map[y][x].isWhite == isWhite:
-                    available = map[y][x].getAvailableMoves(map, self.checkMove)
+                    available = map[y][x].getAvailableMoves(map, self.checkMove, doCheck)
                     possibleMoves.extend(available)
 
         return possibleMoves

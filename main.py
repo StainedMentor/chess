@@ -7,18 +7,23 @@ from PyQt5.QtCore import Qt,QTimer
 
 import sys
 import queue
-import random
 import re
 
+import convNetwork
+import network
 from constants import *
 from board import Board
 
-from network import ChessNet
+# from network import ChessNet
+# net = ChessNet()
+#
+# net.load_state_dict(torch.load('dict.pth'))
+# net.eval()
+
+from convNetwork import ChessNet
 net = ChessNet()
-
-net.load_state_dict(torch.load('dict.pth'))
+net.load_state_dict(torch.load('dict_conv.pth'))
 net.eval()
-
 class ChessWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -38,7 +43,7 @@ class ChessWindow(QMainWindow):
         self.timeB = 0
         self.timeType = 0
         self.shouldTime = False
-
+        self.gameFinished = False
 
 
         self.addUI()
@@ -178,6 +183,7 @@ class ChessWindow(QMainWindow):
         if self.board.checkCheck(self.board.map, not self.isWhiteTurn):
             if self.board.checkMate(not self.isWhiteTurn):
                 self.logQueue.put("checkmate")
+                self.gameFinished = True
             else:
                 self.logQueue.put("check")
 
@@ -274,6 +280,8 @@ class ChessWindow(QMainWindow):
         if self.board.checkCheck(self.board.map, not self.isWhiteTurn):
             if self.board.checkMate(not self.isWhiteTurn):
                 self.logQueue.put("checkmate")
+                self.gameFinished = True
+
             else:
                 self.logQueue.put("check")
 
@@ -281,7 +289,7 @@ class ChessWindow(QMainWindow):
 
         self.timeRulesTurnEnd()
 
-        if self.robots:
+        if self.robots and not self.gameFinished:
             self.randomMove()
 
 
@@ -318,33 +326,34 @@ class ChessWindow(QMainWindow):
         bstate = np.array(bstate)
         # print(bstate)
 
-        bstate = bstate.flatten()
+        # bstate = bstate.flatten()
         moves = self.board.getAllMovesEncoded(False)
 
-        vals = torch.Tensor()
-        for move in moves:
-            o, n = move
-            inVec = np.concatenate((bstate, o, n))
-            inVec = torch.Tensor(inVec)
-            output = net(inVec)
-            vals = torch.cat((vals, output))
+        # vals = torch.Tensor()
+        # for move in moves:
+        #     o, n = move
+        #     inVec = np.concatenate((bstate, o, n))
+        #     inVec = torch.Tensor(inVec)
+        #     output = net(inVec)
+        #     vals = torch.cat((vals, output))
+        #
+        # vals = vals.detach().numpy()
+        # bestIndex = vals.argmax()
+        #
+        # o, n = moves[bestIndex]
+        o, n = convNetwork.getBestMove(moves,bstate,net)
 
-        vals = vals.detach().numpy()
-        bestIndex = vals.argmax()
 
-        o, n = moves[bestIndex]
+        self.board.move(o, n)
 
-        x1, y1 = o
-        x, y = n
-
-        if self.board.map[y][x] is not None:
-            self.board.map[y][x].delete(self.scene)
-
-        self.board.map[y][x] = self.board.map[y1][x1]
-        self.board.map[y1][x1] = None
-        self.board.map[y][x].move(x, y)
-        self.selectedPiece = None
         self.hideAvailableMoves()
+        if self.board.checkCheck(self.board.map, not self.isWhiteTurn):
+            if self.board.checkMate(not self.isWhiteTurn):
+                self.logQueue.put("checkmate")
+                self.gameFinished = True
+
+            else:
+                self.logQueue.put("check")
         self.isWhiteTurn = not self.isWhiteTurn
 
 
