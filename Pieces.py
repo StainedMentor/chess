@@ -3,7 +3,6 @@ from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import QGraphicsItem
 
 from constants import *
-from util import *
 
 
 

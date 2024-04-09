@@ -1,7 +1,7 @@
 import random
 import numpy as np
 
-from boardNoGui import Board
+from ai.boardNoGui import Board
 
 import torch
 import torch.nn as nn
@@ -63,7 +63,7 @@ def decodeBoard(boardState):
 def train():
     # init
     net = ChessNet()
-    net.load_state_dict(torch.load('dict.pth'))
+    net.load_state_dict(torch.load('ai/dict.pth'))
 
     num_episodes = 1000
     maxSteps = 120
@@ -184,7 +184,7 @@ def train():
 
 
     stDict = net.state_dict()
-    torch.save(stDict, 'dict.pth')
+    torch.save(stDict, 'ai/dict.pth')
 
     stats = np.array(stats)
 

@@ -9,8 +9,7 @@ import sys
 import queue
 import re
 
-import convNetwork
-import network
+from ai import convNetwork
 from constants import *
 from board import Board
 
@@ -20,9 +19,9 @@ from board import Board
 # net.load_state_dict(torch.load('dict.pth'))
 # net.eval()
 
-from convNetwork import ChessNet
+from ai.convNetwork import ChessNet
 net = ChessNet()
-net.load_state_dict(torch.load('dict_conv.pth'))
+net.load_state_dict(torch.load('ai/dict_conv.pth'))
 net.eval()
 class ChessWindow(QMainWindow):
     def __init__(self):
@@ -211,6 +210,7 @@ class ChessWindow(QMainWindow):
 
     def createChessboard(self):
         self.scene = QGraphicsScene()
+        self.scene.setSceneRect(0, 0, DIMS["tile"]*8, DIMS["tile"]*8)
 
 
         self.scene.mousePressEvent = self.canvasClicked
@@ -222,8 +222,6 @@ class ChessWindow(QMainWindow):
         self.pen = QPen(Qt.black)
 
         self.graphic = QGraphicsView(self.scene, self)
-        self.graphic.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.graphic.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.graphic.setGeometry(0, 0, DIMS["tile"]*8, DIMS["tile"]*8)
         self.grid.addWidget(self.graphic,0,0, 10, 1)
         self.checkerPatter()
@@ -258,6 +256,7 @@ class ChessWindow(QMainWindow):
             return
         pos = event.scenePos()
         self.board.drag(pos)
+
 
 
     def canvasReleased(self,event):
@@ -324,24 +323,10 @@ class ChessWindow(QMainWindow):
 
         bstate = self.board.encodeBoard()
         bstate = np.array(bstate)
-        # print(bstate)
-
-        # bstate = bstate.flatten()
         moves = self.board.getAllMovesEncoded(False)
 
-        # vals = torch.Tensor()
-        # for move in moves:
-        #     o, n = move
-        #     inVec = np.concatenate((bstate, o, n))
-        #     inVec = torch.Tensor(inVec)
-        #     output = net(inVec)
-        #     vals = torch.cat((vals, output))
-        #
-        # vals = vals.detach().numpy()
-        # bestIndex = vals.argmax()
-        #
-        # o, n = moves[bestIndex]
-        o, n = convNetwork.getBestMove(moves,bstate,net)
+
+        o, n = convNetwork.getBestMove(moves, bstate, net)
 
 
         self.board.move(o, n)
