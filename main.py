@@ -1,13 +1,14 @@
 import numpy as np
 import torch
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QPushButton, QGraphicsView, \
-    QGraphicsScene, QGridLayout, QTextEdit, QScrollArea, QLabel, QLineEdit
+    QGraphicsScene, QGridLayout, QTextEdit, QScrollArea, QLabel, QLineEdit, QRadioButton, QButtonGroup
 from PyQt5.QtGui import QBrush, QPen, QColor
 from PyQt5.QtCore import Qt,QTimer
 
 import sys
 import queue
 import re
+import sqlite3
 
 from ai import convNetwork
 from constants import *
@@ -23,11 +24,18 @@ from ai.convNetwork import ChessNet
 net = ChessNet()
 net.load_state_dict(torch.load('ai/dict_conv.pth'))
 net.eval()
+
+
+sql = sqlite3.connect('chess.db')
+sqlCursor = sql.cursor()
+
+
 class ChessWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, config=None):
         super().__init__()
         self.setWindowTitle('PyQt Chess')
         self.setGeometry(100, 100, 1000, 800)
+        print(vars(config).items())
 
         self.selectedPiece = None
         self.availableObjects = []
@@ -342,7 +350,97 @@ class ChessWindow(QMainWindow):
         self.isWhiteTurn = not self.isWhiteTurn
 
 
+
+class SetupWindow(QMainWindow):
+    def __init__(self, config):
+        super().__init__()
+        self.config = config
+
+        self.setWindowTitle('PyQt Chess')
+        self.setGeometry(100, 100, 1000, 800)
+        w = QWidget()
+        self.setCentralWidget(w)
+        self.grid = QGridLayout(w)
+
+
+        self.modeGroup = QButtonGroup()
+        self.timeGroup = QButtonGroup()
+
+
+        # mode selection
+        r1 = QRadioButton('PvP')
+        r2 = QRadioButton('PvP_Online')
+        r3 = QRadioButton('PvAI')
+        self.grid.addWidget(r1, 1, 0)
+        self.grid.addWidget(r2, 1 ,1)
+        self.grid.addWidget(r3, 1, 2)
+        self.modeGroup.addButton(r1)
+        self.modeGroup.addButton(r2)
+        self.modeGroup.addButton(r3)
+
+        # time selection
+        r1 = QRadioButton(gameTimes[0])
+        r2 = QRadioButton(gameTimes[1])
+        r3 = QRadioButton(gameTimes[2])
+        self.grid.addWidget(r1, 2, 0)
+        self.grid.addWidget(r2, 2 ,1)
+        self.grid.addWidget(r3, 2, 2)
+        self.timeGroup.addButton(r1)
+        self.timeGroup.addButton(r2)
+        self.timeGroup.addButton(r3)
+
+        # ip settings
+        self.ipField = QLineEdit()
+        self.ipField.setPlaceholderText('Enter ip here')
+        self.grid.addWidget(self.ipField,3,1)
+        self.portField = QLineEdit()
+        self.portField.setPlaceholderText('Enter port here')
+        self.grid.addWidget(self.portField,3,2)
+
+        # save/load
+        self.button = QPushButton('Save Config')
+        self.grid.addWidget(self.button, 4, 1)
+        self.button.clicked.connect(self.config.save)
+
+        self.button = QPushButton('Load Config')
+        self.grid.addWidget(self.button, 4, 2)
+        self.button.clicked.connect(self.config.load)
+
+        # confirm
+        self.button = QPushButton('Play')
+        self.grid.addWidget(self.button,5,0)
+        self.button.clicked.connect(self.play)
+
+
+        self.show()
+
+
+
+    def confirm(self):
+        if self.modeGroup.checkedButton():
+            self.config.mode = self.modeGroup.checkedButton().text()
+        else:
+            self.config.mode = "PvP"
+
+        if self.timeGroup.checkedButton():
+            self.config.time = self.timeGroup.checkedButton().text()
+        else:
+            self.config.time = "None"
+
+
+
+
+
+    def play(self):
+        self.confirm()
+        ChessWindow(self.config)
+        self.close()
+
+
+
 if __name__ == '__main__':
+
     app = QApplication(sys.argv)
-    window = ChessWindow()
+    config = GameConfig()
+    setup = SetupWindow(config)
     sys.exit(app.exec_())

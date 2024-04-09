@@ -3,7 +3,7 @@ from copy import deepcopy
 
 import numpy as np
 
-from boardNoGui import Board
+from ai.boardNoGui import Board
 
 import torch
 import torch.nn as nn
