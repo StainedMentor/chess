@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 import numpy as np
 import torch
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QPushButton, QGraphicsView, \
@@ -8,11 +10,12 @@ from PyQt5.QtCore import Qt,QTimer
 import sys
 import queue
 import re
-import sqlite3
 
 from ai import convNetwork
 from constants import *
 from board import Board
+from history import History
+from client import Client
 
 # from network import ChessNet
 # net = ChessNet()
@@ -26,8 +29,7 @@ net.load_state_dict(torch.load('ai/dict_conv.pth'))
 net.eval()
 
 
-sql = sqlite3.connect('chess.db')
-sqlCursor = sql.cursor()
+
 
 
 class ChessWindow(QMainWindow):
@@ -36,6 +38,7 @@ class ChessWindow(QMainWindow):
         self.setWindowTitle('PyQt Chess')
         self.setGeometry(100, 100, 1000, 800)
         print(vars(config).items())
+        self.config = config
 
         self.selectedPiece = None
         self.availableObjects = []
@@ -51,6 +54,8 @@ class ChessWindow(QMainWindow):
         self.timeType = 0
         self.shouldTime = False
         self.gameFinished = False
+        self.boards = []
+        self.boardIndex = 0
 
 
         self.addUI()
@@ -60,15 +65,39 @@ class ChessWindow(QMainWindow):
 
         self.board = Board(self.scene)
         self.board.initPieces()
+        self.boards.append(deepcopy(self.board.map))
 
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.handleLog)
         self.timer.start(1000)
 
+        self.force = QTimer(self)
+        self.force.timeout.connect(self.forceRefresh)
+        self.force.start(100)
+
+        self.history = History()
+
+        self.moveQueue = queue.Queue()
+        self.isServer = True
+        self.initServerClient()
+
+
 
 
         self.show()
+
+    def forceRefresh(self):
+        rect = self.scene.sceneRect()
+        self.scene.update(rect)
+        self.scene.setSceneRect(rect)
+
+    def initServerClient(self):
+        ip = self.config.IP
+        port = self.config.port
+        self.client = Client(ip,port, self.moveQueue, self.logQueue, self.handleReceivedMove)
+        if self.client.isClient:
+            self.isServer = False
 
     def handleLog(self):
         while not self.logQueue.empty():
@@ -101,7 +130,7 @@ class ChessWindow(QMainWindow):
         self.setCentralWidget(w)
         self.grid = QGridLayout(w)
         # robot button
-        self.robotButton = QPushButton("Toggle robots: " + str(self.robots), w)
+        self.robotButton = QPushButton("history back", w)
         self.robotButton.clicked.connect(self.robotsStart)
 
         self.setCentralWidget(w)
@@ -120,17 +149,47 @@ class ChessWindow(QMainWindow):
         self.timeBLabel = QLabel("black time: 00:00")
         self.grid.addWidget(self.timeBLabel, 3, 1)
 
-        self.timerToggle = QPushButton("Toggle timer: " + gameTimes[self.timeType], w)
-        self.timerToggle.clicked.connect(self.toggleTime)
+        self.timerToggle = QPushButton("history forward", w)
+        self.timerToggle.clicked.connect(self.historyForward)
         self.grid.addWidget(self.timerToggle, 8, 1)
 
         # input
         self.command = QLineEdit(self)
         self.command.setPlaceholderText('A0,A1')
         self.submit_command = QPushButton('Submit', self)
-        self.submit_command.clicked.connect(self.execute)
+        self.submit_command.clicked.connect(self.readText)
         self.grid.addWidget(self.command, 4, 1)
         self.grid.addWidget(self.submit_command, 5, 1)
+
+        # input
+        self.msgBox = QLineEdit(self)
+        self.msgBox.setPlaceholderText('Chat')
+        self.submitMsg = QPushButton('Send', self)
+        self.submitMsg.clicked.connect(self.sendChat)
+        self.grid.addWidget(self.msgBox, 6, 1)
+        self.grid.addWidget(self.submitMsg, 7, 1)
+
+
+    def sendChat(self):
+        text = self.msgBox.text()
+        msg = "MSG|chat: " + text + "\n"
+        self.client.send_text_message(msg)
+
+    def handleReceivedMove(self, move):
+        origin, new = self.history.universalToPos(move)
+
+        if self.isServer:
+            if self.execute(origin,new):
+                print("moved")
+                pass
+            else:
+                msg = "MSG|chat: " + "invalid" + "\n"
+                self.client.send_text_message(msg)
+        else:
+            self.execute(origin,new)
+
+
+
 
     def timeRulesTurnEnd(self):
         if self.timeType == 1:
@@ -159,12 +218,29 @@ class ChessWindow(QMainWindow):
 
 
     def robotsStart(self):
-        self.robots = not self.robots
-        self.robotButton.setText("Toggle robots: " + str(self.robots))
+        self.boardIndex = self.boardIndex - 1
+        self.board.deletePieces()
+        self.board.map = self.boards[self.boardIndex]
+        self.board.update()
+        self.isWhiteTurn = not self.isWhiteTurn
 
-    def execute(self):
+
+    def historyForward(self):
+        self.boardIndex = self.boardIndex + 1
+        self.board.deletePieces()
+
+        self.board.map = self.boards[self.boardIndex]
+        self.board.update()
+        self.isWhiteTurn = not self.isWhiteTurn
+
+
+
+    def readText(self):
         text = self.command.text()
         origin, new = self.parse(text)
+        self.execute(origin,new)
+    def execute(self, origin, new):
+
         if origin is None:
             self.logQueue.put("invalid format\n")
             return
@@ -172,7 +248,9 @@ class ChessWindow(QMainWindow):
         if piece is None:
             self.logQueue.put("invalid move (no piece)\n")
             return
-        self.availableMoves = piece.getAvailableMoves(self.board.map)
+
+        self.availableMoves = self.board.selectPiece(origin[0],origin[1])
+
 
         if self.board.map[origin[1]][origin[0]].isWhite != self.isWhiteTurn:
             self.logQueue.put("wrong turn\n")
@@ -194,9 +272,12 @@ class ChessWindow(QMainWindow):
             else:
                 self.logQueue.put("check")
 
+
+
         self.isWhiteTurn = not self.isWhiteTurn
 
         self.timeRulesTurnEnd()
+        return True
 
     def parse(self, text):
         pattern = r'^[a-zA-Z]\d+,[a-zA-Z]\d+$'
@@ -282,6 +363,7 @@ class ChessWindow(QMainWindow):
 
         self.releasePiece()
 
+        self.history.saveMove(((x1,y1),(newx,newy)))
         self.logQueue.put("Moved from {x1},{y1} to {x2},{y2}.\n".format(x1=abc[x1],y1=str(y1),x2=abc[newx],y2=str(newy)))
 
         if self.board.checkCheck(self.board.map, not self.isWhiteTurn):
@@ -295,10 +377,50 @@ class ChessWindow(QMainWindow):
         self.isWhiteTurn = not self.isWhiteTurn
 
         self.timeRulesTurnEnd()
+        self.boards.append(deepcopy(self.board.map))
+        self.boardIndex = self.boardIndex + 1
+
+
+        if self.config.mode == "PvP_Online":
+            # if self.isServer and not self.isWhiteTurn:
+            #     return
+            # if not self.isServer and self.isWhiteTurn:
+            #     return
+            uniMove = self.history.convertToUniversalMove(((x1, y1), (newx, newy)))
+            uniMove = "MOVE|" + uniMove
+            self.client.send_text_message(uniMove)
+
+            # if self.isServer:
+            #     uniMove = self.history.convertToUniversalMove(((x1,y1),(newx,newy)))
+            #     uniMove = "MOVE|" + uniMove
+            #     self.client.send_text_message(uniMove)
+            #     self.awaitMove()
+            # else:
+            #     uniMove = self.history.convertToUniversalMove(((x1,y1),(newx,newy)))
+            #     uniMove = "MOVE|" + uniMove
+            #     self.client.send_text_message(uniMove)
+            #     self.awaitMoveClient()
 
         if self.robots and not self.gameFinished:
             self.randomMove()
 
+
+    # def awaitMove(self):
+    #     serverValidation = False
+    #     while not serverValidation:
+    #         move =self.moveQueue.get()
+    #         origin, new = self.history.universalToPos(move)
+    #         if self.execute(origin,new):
+    #             serverValidation = True
+    #
+    #     pass
+    #
+    # def awaitMoveClient(self):
+    #     move = self.moveQueue.get()
+    #     print(move)
+    #     origin, new = self.history.universalToPos(move)
+    #     print(origin,new)
+    #     self.execute(origin, new)
 
     def releasePiece(self):
         self.board.selectedPiece.deselect()
@@ -307,6 +429,12 @@ class ChessWindow(QMainWindow):
 
 
     def canvasClicked(self, event):
+        if self.config.mode == "PvP_Online":
+            if self.isServer and not self.isWhiteTurn:
+                return
+            if not self.isServer and self.isWhiteTurn:
+                return
+
         x,y = self.getCoords(event)
 
         if self.board.isEmpty([x,y]) or self.selectedPiece is not None:
@@ -400,11 +528,11 @@ class SetupWindow(QMainWindow):
         # save/load
         self.button = QPushButton('Save Config')
         self.grid.addWidget(self.button, 4, 1)
-        self.button.clicked.connect(self.config.save)
+        self.button.clicked.connect(self.save)
 
         self.button = QPushButton('Load Config')
         self.grid.addWidget(self.button, 4, 2)
-        self.button.clicked.connect(self.config.load)
+        self.button.clicked.connect(self.load)
 
         # confirm
         self.button = QPushButton('Play')
@@ -413,7 +541,6 @@ class SetupWindow(QMainWindow):
 
 
         self.show()
-
 
 
     def confirm(self):
@@ -427,14 +554,27 @@ class SetupWindow(QMainWindow):
         else:
             self.config.time = "None"
 
+        self.config.IP = self.ipField.text()
+        self.config.port = int(self.portField.text())
 
 
+    def save(self):
+        self.confirm()
+        self.config.save()
+
+    def load(self):
+        self.config.load()
+        self.ipField.setText(self.config.IP)
+        self.portField.setText(str(self.config.port))
+        ChessWindow(self.config)
+        self.close()
 
 
     def play(self):
         self.confirm()
         ChessWindow(self.config)
         self.close()
+
 
 
 

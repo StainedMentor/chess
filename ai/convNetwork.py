@@ -10,6 +10,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from matplotlib import pyplot as plt
 import time
+import timeIter
 
 
 class ChessNet(nn.Module):
@@ -93,26 +94,34 @@ def train():
 
     # Training loop
     for episode in range(num_episodes):
+        timeIter.start()
         whiteTook, blackTook, whiteWon, blackWon = 0,0,0,0
         newBoard = Board()
         newBoard.initPieces()
 
         episodeBuffer = []
         episodeEnded = False
+        timeIter.measure("init")
         for step in range(maxSteps):
-
             turn = (step+1)%2
             bstate = newBoard.encodeBoard()
             bstate = np.array(bstate)
             moves = newBoard.getAllMovesEncoded(True if turn == 1 else False)
+            timeIter.measure("allMoves")
 
 
             o, n = getBestMove(moves,bstate,net)
+            timeIter.measure("best")
 
             newBoard.move(o, n)
-            check = newBoard.checkCheck(newBoard.map, not (True if turn == 1 else False))
-            mate = newBoard.checkMate(not (True if turn == 1 else False))
+            timeIter.measure("move")
 
+            check = newBoard.checkCheck(newBoard.map, not (True if turn == 1 else False))
+            timeIter.measure("check")
+            mate = 0
+            if check:
+                mate = newBoard.checkMate(not (True if turn == 1 else False))
+                timeIter.measure("mate")
             reward = 0
             if check:
                 reward = 5
@@ -148,6 +157,8 @@ def train():
                 updateRewards(episodeBuffer,-1,-100,0.1,1)
 
                 break
+            timeIter.measure("score")
+
         current = np.array([whiteTook,blackTook,whiteWon,blackWon])
         if stats is None:
             stats = np.array([current])
@@ -158,7 +169,7 @@ def train():
         # if not episodeEnded:
         #     updateRewards(episodeBuffer,-1,-40,0)
         #     updateRewards(episodeBuffer,-1,-40,0,1)
-
+        timeIter.measure("stats")
         memoryBuffer.extend(episodeBuffer)
 
 
@@ -171,7 +182,7 @@ def train():
 
         miniBatch.extend(episodeBuffer)
         # miniBatch = episodeBuffer
-
+        timeIter.measure("batch")
         tempLoss = 0
         for state, action, reward in miniBatch:
             inVec = readyInput(state,action)
@@ -191,6 +202,10 @@ def train():
 
         if episode % 10 ==0:
             gameSamples.append(episodeBuffer)
+
+        timeIter.measure("train")
+        timeIter.print_all()
+
 
 
     # for sample in gameSamples:

@@ -5,7 +5,7 @@ from Pieces import *
 
 class Board:
     def __init__(self, scene):
-        self.map = BOARD_DEF
+        self.map = deepcopy(BOARD_DEF)
         self.whiteChecked = False
         self.blackChecked = False
         self.selectedPiece = None
@@ -28,6 +28,18 @@ class Board:
 
     def checkTurn(self, pos, whiteTurn):
         return self.map[pos[1]][pos[0]].isWhite == whiteTurn
+
+    def deletePieces(self):
+        for i in range(8):
+            for j in range(8):
+                if self.map[j][i] is not None:
+                    self.map[j][i].delete(self.scene)
+
+    def update(self):
+        for i in range(8):
+            for j in range(8):
+                if self.map[j][i] is not None:
+                    self.map[j][i].drawSelf(self.scene)
 
     def move(self, origin, new):
         originx,originy = origin
